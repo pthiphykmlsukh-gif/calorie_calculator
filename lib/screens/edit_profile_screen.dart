@@ -1,12 +1,7 @@
-// ไฟล์: edit_profile_screen.dart (โค้ดที่ปรับปรุงและทำงานถูกต้อง)
-
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'dart:io' show File;
-import 'package:flutter/foundation.dart' show kIsWeb;
+// ตัด image_picker, firebase_storage, dart:io ออก เพราะไม่ได้ใช้แล้ว
 
 class EditProfileScreen extends StatefulWidget {
   final Map<String, dynamic> initialProfileData;
@@ -28,9 +23,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   String? _errorMessage;
   bool _isLoading = false;
 
-  XFile? _pickedXFile; 
-  String? _profileImageUrl; 
-  bool _isPhotoRemoved = false; // สถานะใหม่: ใช้ตรวจสอบว่าผู้ใช้ต้องการลบรูปหรือไม่
+  // ตัวแปรเก็บ path ของรูปที่เลือก (จะเป็น URL หรือ Asset Path ก็ได้)
+  String? _selectedProfileImage; 
+
+  // สร้างรายชื่อรูปภาพที่มีใน assets (1 ถึง 12)
+  final List<String> _avatarAssets = List.generate(
+    12, 
+    (index) => 'assets/images/profile_picture_${index + 1}.png'
+  );
 
   @override
   void initState() {
@@ -41,7 +41,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _heightController.text = (widget.initialProfileData['height'] ?? '').toString();
     _gender = widget.initialProfileData['gender'] ?? 'ชาย';
     _weightGoal = widget.initialProfileData['weightGoal'] ?? 'คงที่';
-    _profileImageUrl = widget.initialProfileData['profileImageUrl'] as String?;
+    _selectedProfileImage = widget.initialProfileData['profileImageUrl'] as String?;
   }
 
   @override
@@ -53,64 +53,77 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.dispose();
   }
 
-  // ฟังก์ชันสำหรับแสดง Dialog เพื่อเลือกรูป/ลบรูป (ใช้ Bottom Sheet แทน AlertDialog เพื่อความสวยงาม)
-  Future<void> _pickImage() async {
-    final ImagePicker picker = ImagePicker();
-    final String? action = await showModalBottomSheet<String>(
+  // ฟังก์ชันแสดง Dialog ให้เลือกรูป Avatar
+  void _showAvatarSelection() {
+    showModalBottomSheet(
       context: context,
-      builder: (BuildContext context) {
-        return SafeArea(
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(16),
+          height: 400, // กำหนดความสูง
           child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              ListTile(
-                leading: const Icon(Icons.photo_library),
-                title: const Text('เลือกจากแกลเลอรี'),
-                onTap: () => Navigator.of(context).pop('gallery'),
+            children: [
+              const Text(
+                'เลือกรูปโปรไฟล์',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
-              ListTile(
-                leading: const Icon(Icons.camera_alt),
-                title: const Text('ถ่ายรูปด้วยกล้อง'),
-                onTap: () => Navigator.of(context).pop('camera'),
-              ),
-              // ปุ่มลบรูปจะแสดงถ้ามีรูปเดิมอยู่และยังไม่ได้กดลบ
-              if ((_profileImageUrl != null && _profileImageUrl!.isNotEmpty) && !_isPhotoRemoved)
-                ListTile(
-                  leading: const Icon(Icons.delete_forever, color: Colors.red),
-                  title: const Text('ลบรูปโปรไฟล์', style: TextStyle(color: Colors.red)),
-                  onTap: () => Navigator.of(context).pop('remove'),
+              const SizedBox(height: 16),
+              Expanded(
+                child: GridView.builder(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 4, // แถวละ 4 รูป
+                    crossAxisSpacing: 10,
+                    mainAxisSpacing: 10,
+                  ),
+                  itemCount: _avatarAssets.length,
+                  itemBuilder: (context, index) {
+                    final assetPath = _avatarAssets[index];
+                    final isSelected = _selectedProfileImage == assetPath;
+
+                    return GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _selectedProfileImage = assetPath;
+                        });
+                        Navigator.pop(context); // ปิด Dialog หลังเลือก
+                      },
+                      child: Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: isSelected 
+                              ? Border.all(color: Theme.of(context).primaryColor, width: 3)
+                              : null,
+                        ),
+                        child: CircleAvatar(
+                          backgroundImage: AssetImage(assetPath),
+                          backgroundColor: Colors.grey[200],
+                        ),
+                      ),
+                    );
+                  },
                 ),
+              ),
             ],
           ),
         );
       },
     );
-
-    XFile? pickedFile;
-
-    if (action == 'gallery') {
-      pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 75);
-    } else if (action == 'camera') {
-      pickedFile = await picker.pickImage(source: ImageSource.camera, imageQuality: 75);
-    } else if (action == 'remove') {
-      setState(() {
-        _pickedXFile = null;
-        _profileImageUrl = null;
-        _isPhotoRemoved = true;
-      });
-      return; 
-    }
-
-    if (pickedFile != null) {
-      setState(() {
-        _pickedXFile = pickedFile;
-        _profileImageUrl = null; 
-        _isPhotoRemoved = false; 
-      });
-    }
   }
 
-  // ฟังก์ชันหลักสำหรับอัปเดตข้อมูลโปรไฟล์
+  // ฟังก์ชัน Helper เพื่อดูว่ารูปเป็น Web หรือ Asset
+  ImageProvider _getImageProvider(String? imagePath) {
+    if (imagePath == null || imagePath.isEmpty) {
+      return const AssetImage('assets/images/profile_picture_1.png'); // รูป Default ถ้าไม่มีค่า
+    }
+    if (imagePath.startsWith('http')) {
+      return NetworkImage(imagePath); // รูปเก่าจาก Firebase Storage (ถ้ามี)
+    }
+    return AssetImage(imagePath); // รูปจาก Assets
+  }
+
   Future<void> _updateProfile() async {
     setState(() {
       _isLoading = true;
@@ -126,7 +139,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       return;
     }
 
-    // ตรวจสอบความถูกต้องของข้อมูล
     final String username = _usernameController.text.trim();
     final int? age = int.tryParse(_ageController.text.trim());
     final double? weight = double.tryParse(_weightController.text.trim());
@@ -134,49 +146,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     if (username.isEmpty || age == null || weight == null || height == null || age <= 0 || weight <= 0 || height <= 0) {
       setState(() {
-        _errorMessage = 'โปรดกรอกข้อมูลให้ครบถ้วนและถูกต้อง (อายุ, น้ำหนัก, ส่วนสูง ต้องเป็นตัวเลขมากกว่า 0)';
+        _errorMessage = 'โปรดกรอกข้อมูลให้ครบถ้วนและถูกต้อง';
         _isLoading = false;
       });
       return;
     }
 
-    String? newProfileImageUrl = _profileImageUrl; 
-
     try {
-      // 1. จัดการรูปภาพ (เฉพาะกรณีที่มีการเลือกรูปใหม่หรือลบรูป)
-      if (_pickedXFile != null) {
-        // อัปโหลดรูปใหม่
-        final storageRef = FirebaseStorage.instance.ref().child('user_profile_images').child('${user.uid}.jpg');
-
-        // อัปโหลดตามแพลตฟอร์ม
-        if (kIsWeb) {
-          final bytes = await _pickedXFile!.readAsBytes();
-          await storageRef.putData(bytes);
-        } else {
-          await storageRef.putFile(File(_pickedXFile!.path));
-        }
-
-        newProfileImageUrl = await storageRef.getDownloadURL();
-        if (newProfileImageUrl.contains('?')) {
-         // ถ้ามี, ให้ต่อท้ายด้วย &
-          newProfileImageUrl = '$newProfileImageUrl&v=${DateTime.now().millisecondsSinceEpoch}';
-        } else {
-          // ถ้าไม่มี, ให้ต่อท้ายด้วย ?
-          newProfileImageUrl = '$newProfileImageUrl?v=${DateTime.now().millisecondsSinceEpoch}';
-       }
-
-      } else if (_isPhotoRemoved) {
-        // หากผู้ใช้กดลบรูป: พยายามลบไฟล์เก่าจาก Storage
-        try {
-            await FirebaseStorage.instance.ref().child('user_profile_images').child('${user.uid}.jpg').delete();
-        } catch (e) {
-            // หากเกิด Error unauthorized ที่นี่, ให้มั่นใจว่า Storage Rules ถูกตั้งค่าในขั้นตอนที่ 1
-            print("Could not delete old profile image: $e");
-        }
-        newProfileImageUrl = null; // ตั้งค่า URL ใน Firestore เป็น null
-      }
-      
-      // 2. เตรียมข้อมูลสำหรับ Firestore
+      // เตรียมข้อมูลสำหรับ Firestore
+      // หมายเหตุ: เราเก็บ String path ของรูปตรงๆ เลย ไม่ต้องอัปโหลด
       final Map<String, dynamic> updateData = {
         'username': username,
         'age': age,
@@ -184,11 +162,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         'weight': weight,
         'height': height,
         'weightGoal': _weightGoal,
-        'profileImageUrl': newProfileImageUrl, 
+        'profileImageUrl': _selectedProfileImage, // บันทึก Path หรือ URL ที่เลือก
         'updatedAt': Timestamp.now(),
       };
 
-      // 3. อัปเดตข้อมูลใน Firestore
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set(updateData, SetOptions(merge: true));
 
       if (mounted) {
@@ -197,16 +174,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         );
         Navigator.of(context).pop();
       }
-    } on FirebaseException catch (e) {
+    } catch (e) {
       print("Error updating profile: $e");
       setState(() {
-        // แสดงข้อผิดพลาดให้ผู้ใช้เห็น
-        _errorMessage = 'เกิดข้อผิดพลาดในการอัปเดต: ${e.message}'; 
-      });
-    } catch (e) {
-      print("An unexpected error occurred: $e");
-      setState(() {
-        _errorMessage = 'เกิดข้อผิดพลาดที่ไม่คาดคิด: $e';
+        _errorMessage = 'เกิดข้อผิดพลาด: $e';
       });
     } finally {
       setState(() {
@@ -219,16 +190,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Widget build(BuildContext context) {
     final Color primaryColor = Theme.of(context).primaryColor;
 
-    // Logic การแสดงรูป
-    ImageProvider<Object>? imageProvider;
-    if (_pickedXFile != null) {
-      imageProvider = kIsWeb
-          ? NetworkImage(_pickedXFile!.path) as ImageProvider<Object>
-          : FileImage(File(_pickedXFile!.path));
-    } else if (_profileImageUrl != null && _profileImageUrl!.isNotEmpty && !_isPhotoRemoved) {
-      imageProvider = NetworkImage(_profileImageUrl!);
-    }
-    
     return Scaffold(
       appBar: AppBar(
         title: const Text('แก้ไขโปรไฟล์'),
@@ -248,23 +209,17 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
               const SizedBox(height: 30),
 
-              // ส่วนแสดงรูปโปรไฟล์ (Layout เดิม)
+              // ส่วนแสดงรูปโปรไฟล์
               GestureDetector(
-                onTap: _pickImage,
+                onTap: _showAvatarSelection, // กดแล้วเปิดรายการรูป
                 child: Stack(
                   alignment: Alignment.bottomRight,
                   children: [
                     CircleAvatar(
                       radius: 60,
-                      backgroundColor: primaryColor.withOpacity(0.7),
-                      backgroundImage: imageProvider,
-                      child: imageProvider == null
-                          ? const Icon(
-                              Icons.person,
-                              size: 80,
-                              color: Colors.white,
-                            )
-                          : null,
+                      backgroundColor: primaryColor.withOpacity(0.2),
+                      // ใช้ Helper function แสดงรูป
+                      backgroundImage: _getImageProvider(_selectedProfileImage),
                     ),
                     Positioned(
                       right: 0,
@@ -273,7 +228,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         backgroundColor: Theme.of(context).colorScheme.secondary,
                         radius: 20,
                         child: const Icon(
-                          Icons.camera_alt,
+                          Icons.edit, // เปลี่ยนไอคอนเป็นรูปดินสอ/แก้ไข
                           color: Colors.white,
                           size: 20,
                         ),
@@ -282,9 +237,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   ],
                 ),
               ),
+              const SizedBox(height: 10),
+              const Text("แตะที่รูปเพื่อเปลี่ยน", style: TextStyle(color: Colors.grey)),
               const SizedBox(height: 30),
 
-              // ... (ส่วน TextField และ Dropdown ทั้งหมดที่ยังอยู่) ...
               // TextField ชื่อผู้ใช้
               TextField(
                 controller: _usernameController,
@@ -292,8 +248,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   labelText: 'ชื่อผู้ใช้ (Username)',
                   border: const OutlineInputBorder(),
                   prefixIcon: const Icon(Icons.person_outline),
-                  enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: primaryColor.withOpacity(0.5))),
-                  focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: primaryColor)),
                 ),
               ),
               const SizedBox(height: 16),
@@ -304,8 +258,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   labelText: 'อายุ (ปี)',
                   border: const OutlineInputBorder(),
                   prefixIcon: const Icon(Icons.cake),
-                  enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: primaryColor.withOpacity(0.5))),
-                  focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: primaryColor)),
                 ),
                 keyboardType: TextInputType.number,
               ),
@@ -317,8 +269,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   labelText: 'น้ำหนัก (กิโลกรัม)',
                   border: const OutlineInputBorder(),
                   prefixIcon: const Icon(Icons.fitness_center),
-                  enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: primaryColor.withOpacity(0.5))),
-                  focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: primaryColor)),
                 ),
                 keyboardType: TextInputType.number,
               ),
@@ -330,69 +280,41 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   labelText: 'ส่วนสูง (เซนติเมตร)',
                   border: const OutlineInputBorder(),
                   prefixIcon: const Icon(Icons.height),
-                  enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: primaryColor.withOpacity(0.5))),
-                  focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: primaryColor)),
                 ),
                 keyboardType: TextInputType.number,
               ),
               const SizedBox(height: 16),
-              // Dropdown สำหรับเลือกเพศ
+              // Dropdown เพศ
               DropdownButtonFormField<String>(
                 value: _gender,
                 decoration: InputDecoration(
                   labelText: 'เพศ',
                   border: const OutlineInputBorder(),
                   prefixIcon: const Icon(Icons.wc),
-                  enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: primaryColor.withOpacity(0.5))),
-                  focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: primaryColor)),
                 ),
-                items: ['ชาย', 'หญิง']
-                    .map((label) => DropdownMenuItem(
-                          value: label,
-                          child: Text(label),
-                        ))
-                    .toList(),
-                onChanged: (value) {
-                  setState(() {
-                    _gender = value!;
-                  });
-                },
+                items: ['ชาย', 'หญิง'].map((label) => DropdownMenuItem(value: label, child: Text(label))).toList(),
+                onChanged: (value) => setState(() => _gender = value!),
               ),
               const SizedBox(height: 16),
-              // Dropdown สำหรับเลือกเป้าหมายน้ำหนัก
+              // Dropdown เป้าหมาย
               DropdownButtonFormField<String>(
                 value: _weightGoal,
                 decoration: InputDecoration(
                   labelText: 'เป้าหมายน้ำหนัก',
                   border: const OutlineInputBorder(),
                   prefixIcon: const Icon(Icons.track_changes),
-                  enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: primaryColor.withOpacity(0.5))),
-                  focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: primaryColor)),
                 ),
-                items: ['ลดน้ำหนัก', 'เพิ่มน้ำหนัก', 'คงที่']
-                    .map((label) => DropdownMenuItem(
-                          value: label,
-                          child: Text(label),
-                        ))
-                    .toList(),
-                onChanged: (value) {
-                  setState(() {
-                    _weightGoal = value!;
-                  });
-                },
+                items: ['ลดน้ำหนัก', 'เพิ่มน้ำหนัก', 'คงที่'].map((label) => DropdownMenuItem(value: label, child: Text(label))).toList(),
+                onChanged: (value) => setState(() => _weightGoal = value!),
               ),
               const SizedBox(height: 24),
-              // แสดงข้อความแจ้งเตือนเมื่อเกิดข้อผิดพลาด
+              
               if (_errorMessage != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10.0),
-                  child: Text(
-                    _errorMessage!,
-                    style: const TextStyle(color: Colors.red, fontSize: 14),
-                    textAlign: TextAlign.center,
-                  ),
+                  child: Text(_errorMessage!, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center),
                 ),
-              // ปุ่มบันทึก
+                
               _isLoading
                   ? CircularProgressIndicator(color: primaryColor)
                   : ElevatedButton(
@@ -401,16 +323,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         backgroundColor: primaryColor,
                         foregroundColor: Colors.white,
                         minimumSize: const Size(double.infinity, 50),
-                        padding: const EdgeInsets.symmetric(vertical: 15),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        elevation: 5,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                       ),
-                      child: const Text(
-                        'บันทึกข้อมูล',
-                        style: TextStyle(fontSize: 18),
-                      ),
+                      child: const Text('บันทึกข้อมูล', style: TextStyle(fontSize: 18)),
                     ),
             ],
           ),

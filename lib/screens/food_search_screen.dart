@@ -60,7 +60,7 @@ class _FoodSearchScreenState extends State<FoodSearchScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0),
             child: Text(
-              '**หมายเหตุ:** ค่าแคลอรี่เป็นค่าประมาณการ อาจไม่แม่นยำ 100% ขึ้นอยู่กับส่วนผสมและวิธีการปรุง',
+              '**หมายเหตุ:** ค่าแคลอรี่เป็นค่าประมาณการ อาจไม่แม่นยำ 100% ขึ้นอยู่กับส่วนผสมและวิธีการปรุงและปริมาณ',
               style: TextStyle(
                 fontSize: 12,
                 color: Colors.grey[700],

@@ -2,7 +2,7 @@ name: calorie_calculator
 description: "A new Flutter project."
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 1.0.0+2
 
 environment:
   sdk: ^3.8.1
@@ -43,7 +43,7 @@ flutter:
     - assets/images/ # นี่คือการบอก Flutter ว่าให้รวมไฟล์ทั้งหมดในโฟลเดอร์ assets/images/
 
 flutter_launcher_icons:
-  android: "launcher_icon" 
+  android: "assets/images/app_icon2.png" 
   ios: true
-  image_path: "assets/images/app_icon.png" 
+  image_path: "assets/images/app_icon2.png" 
   min_sdk_android: 21
